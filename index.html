@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f0f13" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Booling?" />
+  <title>Where We Booling?</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+  <!-- ── Name Entry Screen ─────────────────────────────────────────────── -->
+  <div id="name-screen" class="screen hidden">
+    <div class="name-entry">
+      <div class="logo">🎉</div>
+      <h1>Where We Booling?</h1>
+      <p class="subtitle">What's your name?</p>
+      <input
+        type="text"
+        id="name-input"
+        placeholder="Your name..."
+        maxlength="20"
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+      />
+      <button id="name-submit" class="btn btn-primary">Let's Go →</button>
+    </div>
+  </div>
+
+  <!-- ── Main App ──────────────────────────────────────────────────────── -->
+  <div id="main-screen" class="screen hidden">
+    <header>
+      <h1>Where We Booling? 🎉</h1>
+      <div class="user-info">
+        <span id="user-name-display"></span>
+        <button id="change-name-btn" class="btn-link">change</button>
+      </div>
+    </header>
+
+    <main>
+
+      <!-- Live Status Board -->
+      <section class="status-board">
+        <div class="house-card" id="card-mega" data-house="Mega">
+          <div class="house-header">
+            <span class="house-emoji">🏠</span>
+            <span class="house-name">Mega</span>
+            <span class="badge" id="count-mega">0</span>
+          </div>
+          <div class="house-people" id="people-mega">
+            <span class="empty-text">Nobody here yet</span>
+          </div>
+        </div>
+
+        <div class="house-card" id="card-809" data-house="809">
+          <div class="house-header">
+            <span class="house-emoji">🏡</span>
+            <span class="house-name">809</span>
+            <span class="badge" id="count-809">0</span>
+          </div>
+          <div class="house-people" id="people-809">
+            <span class="empty-text">Nobody here yet</span>
+          </div>
+        </div>
+
+        <div class="house-card" id="card-garnett" data-house="Garnett">
+          <div class="house-header">
+            <span class="house-emoji">🏘️</span>
+            <span class="house-name">Garnett</span>
+            <span class="badge" id="count-garnett">0</span>
+          </div>
+          <div class="house-people" id="people-garnett">
+            <span class="empty-text">Nobody here yet</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Your current status -->
+      <div id="current-status" class="current-status hidden">
+        You're at <strong id="current-house-label"></strong>
+      </div>
+
+      <!-- Check-in Buttons -->
+      <section class="checkin-section">
+        <p class="section-label">WHERE YOU AT?</p>
+        <div class="checkin-grid">
+          <button class="btn btn-house btn-mega" data-house="Mega">🏠 Mega</button>
+          <button class="btn btn-house btn-809" data-house="809">🏡 809</button>
+          <button class="btn btn-house btn-garnett" data-house="Garnett">🏘️ Garnett</button>
+        </div>
+        <button class="btn btn-out" id="btn-out">👋 I'm Out</button>
+      </section>
+
+      <!-- Notification opt-in -->
+      <div id="notif-prompt" class="notif-prompt hidden">
+        <span class="notif-icon">🔔</span>
+        <div class="notif-text">
+          <strong>Get notified when friends check in?</strong>
+          <p>We'll ping you when someone shows up</p>
+        </div>
+        <button id="enable-notifs" class="btn btn-sm">Enable</button>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

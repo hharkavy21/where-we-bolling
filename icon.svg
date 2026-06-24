@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="#0f0f13"/>
+
+  <!-- Purple blob -->
+  <circle cx="180" cy="210" r="90" fill="#a78bfa" opacity=".85"/>
+  <!-- Blue blob -->
+  <circle cx="332" cy="210" r="90" fill="#60a5fa" opacity=".85"/>
+  <!-- Green blob -->
+  <circle cx="256" cy="330" r="90" fill="#34d399" opacity=".85"/>
+
+  <!-- White house silhouette -->
+  <g fill="white" opacity=".95">
+    <!-- Roof -->
+    <polygon points="256,160 320,220 192,220"/>
+    <!-- Body -->
+    <rect x="208" y="220" width="96" height="80" rx="4"/>
+    <!-- Door -->
+    <rect x="240" y="260" width="32" height="40" rx="4" fill="#0f0f13"/>
+  </g>
+</svg>
