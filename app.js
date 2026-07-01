@@ -32,7 +32,7 @@ const currentHouseEl = document.getElementById('current-house-label');
 const notifPrompt    = document.getElementById('notif-prompt');
 const enableNotifsBtn= document.getElementById('enable-notifs');
 const houseButtons   = document.querySelectorAll('.btn-house');
-const toast          = document.getElementById('toast');
+
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 async function init() {
