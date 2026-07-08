@@ -53,6 +53,7 @@ if (!userId) {
 // ── State ────────────────────────────────────────────────────────────────────
 let locationsMap = {};  // locationId → { name, isPermanent }
 let usersMap     = {};  // userId → { name, locationId, message, fcmToken }
+let listeningStarted = false; // guard against duplicate onSnapshot registrations
 
 // Pending check-in target (set when sheet opens)
 let pendingLocationId   = null;
@@ -141,14 +142,15 @@ changeNameBtn.addEventListener('click', () => {
 
 // ── Firestore listeners ───────────────────────────────────────────────────────
 function startListening() {
-  // Locations collection
+  if (listeningStarted) return; // prevent duplicate listeners from name-change flow
+  listeningStarted = true;
+
   onSnapshot(collection(db, 'locations'), snap => {
     locationsMap = {};
     snap.forEach(d => { locationsMap[d.id] = d.data(); });
     render();
   });
 
-  // Users collection
   onSnapshot(collection(db, 'users'), snap => {
     usersMap = {};
     snap.forEach(d => { usersMap[d.id] = d.data(); });
@@ -297,11 +299,18 @@ checkinMessage.addEventListener('input', () => {
 });
 
 sheetConfirm.addEventListener('click', async () => {
-  if (!pendingLocationId) return;
-  const msg = checkinMessage.value.trim();
+  if (!pendingLocationId || sheetConfirm.disabled) return;
+  sheetConfirm.disabled = true;
+  const locId  = pendingLocationId;
+  const locName = pendingLocationName;
+  const msg    = checkinMessage.value.trim();
   closeSheets();
-  await checkIn(pendingLocationId, pendingLocationName, msg);
-  showToast(`Checked in at ${pendingLocationName} 🎉`);
+  try {
+    await checkIn(locId, locName, msg);
+    showToast(`Checked in at ${locName} 🎉`);
+  } finally {
+    sheetConfirm.disabled = false;
+  }
 });
 
 sheetCancel.addEventListener('click', closeSheets);
@@ -414,8 +423,9 @@ async function initMessaging() {
     notifPrompt.classList.remove('hidden');
   }
 
+  // data-only messages: title/body live in payload.data, not payload.notification
   onMessage(messaging, payload => {
-    showToast(payload.notification?.body ?? 'Someone checked in!');
+    showToast(payload.data?.body ?? payload.data?.title ?? 'Someone checked in!');
   });
 }
 

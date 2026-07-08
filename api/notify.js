@@ -38,12 +38,16 @@ module.exports = async function handler(req, res) {
     : `${name} just left 👋`;
   const body = message || (house ? 'Come hang!' : '');
 
+  // Send data-only (no `notification` field). The browser would auto-show a
+  // notification from the `notification` field AND our onBackgroundMessage handler
+  // would show a second one — resulting in duplicate notifications.
+  // With data-only, the service worker controls exactly one notification.
   const result = await admin.messaging().sendEachForMulticast({
     tokens,
-    notification: { title, body },
+    data: { title, body },
     webpush: {
-      notification: { icon: '/icon.svg', badge: '/icon.svg', vibrate: [200, 100, 200] },
-      fcmOptions:   { link: '/' },
+      headers:    { TTL: '86400' },
+      fcmOptions: { link: '/' },
     },
   });
 

@@ -19,10 +19,14 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 // ── Background push notifications ────────────────────────────────────────────
+// We send data-only FCM messages so the OS does NOT auto-show a notification
+// from the `notification` field. This handler is responsible for showing
+// exactly one notification per push — no duplicates.
 messaging.onBackgroundMessage(payload => {
-  const { title, body } = payload.notification ?? {};
-  self.registration.showNotification(title ?? 'Where We Booling? 🎉', {
-    body:    body ?? '',
+  const title = payload.data?.title ?? 'Where We Booling? 🎉';
+  const body  = payload.data?.body  ?? '';
+  self.registration.showNotification(title, {
+    body,
     icon:    '/icon.svg',
     badge:   '/icon.svg',
     vibrate: [200, 100, 200],

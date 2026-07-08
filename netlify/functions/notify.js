@@ -36,10 +36,10 @@ exports.handler = async function (event) {
 
   const result = await admin.messaging().sendEachForMulticast({
     tokens,
-    notification: { title, body },
+    data: { title, body },
     webpush: {
-      notification: { icon: '/icon.svg', vibrate: [200, 100, 200] },
-      fcmOptions:   { link: '/' },
+      headers:    { TTL: '86400' },
+      fcmOptions: { link: '/' },
     },
   });
 
