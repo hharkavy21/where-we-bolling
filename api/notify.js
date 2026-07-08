@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
 
-  const { name, house, senderToken } = req.body ?? {};
+  const { name, house, message, senderToken } = req.body ?? {};
   if (!name) return res.status(400).json({ error: 'name is required' });
 
   const db = admin.firestore();
@@ -32,13 +32,15 @@ module.exports = async function handler(req, res) {
 
   if (tokens.length === 0) return res.json({ success: true, sent: 0 });
 
-  const body = house
-    ? `${name} just checked in at ${house} 🏠`
+  // title always says who/where; body carries the optional message
+  const title = house
+    ? `${name} checked in at ${house} 🏠`
     : `${name} just left 👋`;
+  const body = message || (house ? 'Come hang!' : '');
 
   const result = await admin.messaging().sendEachForMulticast({
     tokens,
-    notification: { title: 'Where We Booling? 🎉', body },
+    notification: { title, body },
     webpush: {
       notification: { icon: '/icon.svg', badge: '/icon.svg', vibrate: [200, 100, 200] },
       fcmOptions:   { link: '/' },
