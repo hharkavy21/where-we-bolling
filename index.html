@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#0d0d12" />
+  <meta name="theme-color" content="#08081a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Booling?" />
@@ -14,37 +14,24 @@
 </head>
 <body>
 
-  <!-- ── Grain texture overlay ─────────────────────────────────────────── -->
   <div class="grain" aria-hidden="true"></div>
 
-  <!-- ── Name Entry Screen ─────────────────────────────────────────────── -->
+  <!-- ── Name Entry ─────────────────────────────────────────────────────── -->
   <div id="name-screen" class="screen hidden">
     <div class="name-entry">
-      <div class="logo-wrap">
-        <span class="logo">🎉</span>
-      </div>
+      <div class="logo-wrap"><span class="logo">🎉</span></div>
       <h1 class="wordmark">Where We<br>Booling?</h1>
       <p class="subtitle">What's your name?</p>
-      <input
-        type="text"
-        id="name-input"
-        placeholder="Your name..."
-        maxlength="20"
-        autocomplete="off"
-        autocorrect="off"
-        spellcheck="false"
-      />
+      <input id="name-input" type="text" placeholder="Your name..."
+             maxlength="20" autocomplete="off" autocorrect="off" spellcheck="false" />
       <button id="name-submit" class="btn btn-primary">Let's Go →</button>
     </div>
   </div>
 
-  <!-- ── Main App ──────────────────────────────────────────────────────── -->
+  <!-- ── Main App ───────────────────────────────────────────────────────── -->
   <div id="main-screen" class="screen hidden">
-
     <header>
-      <div class="header-left">
-        <h1 class="wordmark-sm">Where We Booling? 🎉</h1>
-      </div>
+      <h1 class="wordmark-sm">Where We Booling? 🎉</h1>
       <div class="user-pill">
         <span id="user-name-display"></span>
         <button id="change-name-btn" class="btn-link">✏️</button>
@@ -52,24 +39,19 @@
     </header>
 
     <main>
-
-      <!-- Live location board (rendered by JS) -->
       <div id="locations-board" class="locations-board"></div>
 
-      <!-- Current status pill -->
       <div id="current-status" class="current-status hidden">
         You're chillin' at <strong id="current-location-label"></strong>
       </div>
 
-      <!-- Check-in section -->
       <section class="checkin-section">
         <p class="section-label">WHERE YOU AT?</p>
         <div id="checkin-buttons" class="checkin-grid"></div>
         <button id="add-spot-btn" class="btn-add-spot">📍 Add a spot</button>
-        <button class="btn btn-out" id="btn-out">👋 I'm Out</button>
+        <button id="btn-out" class="btn-out">👋 I'm Out</button>
       </section>
 
-      <!-- Notification opt-in -->
       <div id="notif-prompt" class="notif-prompt hidden">
         <span class="notif-icon">🔔</span>
         <div class="notif-text">
@@ -78,46 +60,34 @@
         </div>
         <button id="enable-notifs" class="btn btn-sm">Enable</button>
       </div>
-
     </main>
   </div>
 
-  <!-- ── Check-in Message Sheet ────────────────────────────────────────── -->
-  <div id="sheet-backdrop" class="backdrop hidden"></div>
-  <div id="checkin-sheet" class="sheet hidden">
+  <!-- ── Check-in Sheet (starts off-screen, no .hidden needed) ─────────── -->
+  <div id="sheet-backdrop" class="backdrop"></div>
+
+  <div id="checkin-sheet" class="sheet">
     <div class="sheet-handle"></div>
     <p class="sheet-eyebrow">Checking in at</p>
     <h2 id="sheet-location-name" class="sheet-title"></h2>
-    <textarea
-      id="checkin-message"
-      class="message-input"
-      placeholder="Send a message… (optional)"
-      maxlength="100"
-      rows="3"
-    ></textarea>
+    <textarea id="checkin-message" class="message-input"
+              placeholder="Drop a message… (optional)" maxlength="100" rows="3"></textarea>
     <div class="char-counter"><span id="char-count">0</span>/100</div>
     <button id="sheet-confirm" class="btn btn-primary">Check In 🎉</button>
     <button id="sheet-cancel" class="btn-link sheet-cancel-link">Cancel</button>
   </div>
 
-  <!-- ── Add Spot Sheet ────────────────────────────────────────────────── -->
-  <div id="add-spot-sheet" class="sheet hidden">
+  <!-- ── Add Spot Sheet ─────────────────────────────────────────────────── -->
+  <div id="add-spot-sheet" class="sheet">
     <div class="sheet-handle"></div>
     <p class="sheet-eyebrow">New spot</p>
     <h2 class="sheet-title">What's it called?</h2>
-    <input
-      type="text"
-      id="spot-name-input"
-      placeholder="Spot name..."
-      maxlength="24"
-      autocomplete="off"
-      autocorrect="off"
-    />
+    <input id="spot-name-input" type="text" placeholder="Spot name..."
+           maxlength="24" autocomplete="off" autocorrect="off" />
     <button id="spot-confirm" class="btn btn-primary">Add Spot 📍</button>
     <button id="spot-cancel" class="btn-link sheet-cancel-link">Cancel</button>
   </div>
 
-  <!-- Toast -->
   <div id="toast" class="toast" aria-live="polite"></div>
 
   <script type="module" src="/app.js"></script>

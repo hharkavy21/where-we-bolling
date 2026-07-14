@@ -1,95 +1,86 @@
-import { initializeApp }                                        from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { initializeApp }                                   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, collection, doc, setDoc, deleteDoc,
-         onSnapshot, serverTimestamp, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getMessaging, getToken, onMessage }                   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
-import { firebaseConfig, vapidKey }                            from './firebase-config.js';
+         onSnapshot, serverTimestamp }                     from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getMessaging, getToken, onMessage }               from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
+import { firebaseConfig, vapidKey }                        from './firebase-config.js';
 
-// ── Firebase ─────────────────────────────────────────────────────────────────
+// ── Firebase ──────────────────────────────────────────────────────────────────
 const fbApp = initializeApp(firebaseConfig);
 const db    = getFirestore(fbApp);
 let messaging = null;
 
-// ── Color / emoji palette ────────────────────────────────────────────────────
-const COLORS = [
-  { accent: 'var(--c0)', dim: 'var(--c0d)' },
-  { accent: 'var(--c1)', dim: 'var(--c1d)' },
-  { accent: 'var(--c2)', dim: 'var(--c2d)' },
-  { accent: 'var(--c3)', dim: 'var(--c3d)' },
-  { accent: 'var(--c4)', dim: 'var(--c4d)' },
-  { accent: 'var(--c5)', dim: 'var(--c5d)' },
-  { accent: 'var(--c6)', dim: 'var(--c6d)' },
+// ── Permanent locations — hardcoded, never touch Firestore for these ───────────
+// This ensures Mega and 809 always render even if Firestore rules aren't set up.
+const PERMANENT = [
+  { id: 'mega', name: 'Mega', emoji: '🏠', color: '#ff4f00', dim: 'rgba(255,79,0,.30)' },
+  { id: '809',  name: '809',  emoji: '🏡', color: '#00b4ff', dim: 'rgba(0,180,255,.30)' },
+];
+const PERM_IDS = new Set(PERMANENT.map(p => p.id));
+
+// Colors cycled for custom spots, assigned deterministically by Firestore doc ID
+const CUSTOM_PALETTE = [
+  { color: '#22d47e', dim: 'rgba(34,212,126,.30)'  },
+  { color: '#f472b6', dim: 'rgba(244,114,182,.30)' },
+  { color: '#a78bfa', dim: 'rgba(167,139,250,.30)' },
+  { color: '#fbbf24', dim: 'rgba(251,191,36,.30)'  },
+  { color: '#fb923c', dim: 'rgba(251,146,60,.30)'  },
+  { color: '#34d399', dim: 'rgba(52,211,153,.30)'  },
 ];
 
-// Permanent locations get stable color slots
-const PERM_COLORS = { mega: 0, '809': 1 };
-
-const EMOJIS = ['🏠','🏡','🏘️','🛖','🏗️','🌆','🎪','🏕️','🎭','🍕'];
-
-function locationColor(locationId) {
-  if (locationId in PERM_COLORS) return COLORS[PERM_COLORS[locationId]];
+function customColor(id) {
   let h = 0;
-  for (const c of locationId) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return COLORS[2 + (h % (COLORS.length - 2))];
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return CUSTOM_PALETTE[h % CUSTOM_PALETTE.length];
 }
 
-function locationEmoji(locationId, name) {
-  if (locationId === 'mega') return '🏠';
-  if (locationId === '809')  return '🏡';
-  let h = 0;
-  for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return EMOJIS[2 + (h % (EMOJIS.length - 2))];
-}
-
-// ── Identity ─────────────────────────────────────────────────────────────────
+// ── Identity ──────────────────────────────────────────────────────────────────
 let userId   = localStorage.getItem('booling_uid');
 let userName = localStorage.getItem('booling_name');
 let fcmToken = null;
 
 if (!userId) {
-  userId = 'u_' + crypto.randomUUID().replace(/-/g,'').slice(0,12);
+  userId = 'u_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12);
   localStorage.setItem('booling_uid', userId);
 }
 
-// ── State ────────────────────────────────────────────────────────────────────
-let locationsMap = {};  // locationId → { name, isPermanent }
-let usersMap     = {};  // userId → { name, locationId, message, fcmToken }
-let listeningStarted = false; // guard against duplicate onSnapshot registrations
+// ── State ─────────────────────────────────────────────────────────────────────
+let customLocs       = [];  // [{ id, name, emoji, color, dim }]  from Firestore
+let usersMap         = {};  // userId → Firestore user doc
+let listeningStarted = false;
 
-// Pending check-in target (set when sheet opens)
-let pendingLocationId   = null;
-let pendingLocationName = null;
+// Pending check-in (set when the sheet opens)
+let pendingLocId   = null;
+let pendingLocName = null;
 
-// ── DOM ──────────────────────────────────────────────────────────────────────
-const nameScreen         = document.getElementById('name-screen');
-const mainScreen         = document.getElementById('main-screen');
-const nameInput          = document.getElementById('name-input');
-const nameSubmit         = document.getElementById('name-submit');
-const userNameEl         = document.getElementById('user-name-display');
-const changeNameBtn      = document.getElementById('change-name-btn');
-const btnOut             = document.getElementById('btn-out');
-const currentStatus      = document.getElementById('current-status');
-const currentLocationEl  = document.getElementById('current-location-label');
-const notifPrompt        = document.getElementById('notif-prompt');
-const enableNotifsBtn    = document.getElementById('enable-notifs');
-const locationBoard      = document.getElementById('locations-board');
-const checkinButtons     = document.getElementById('checkin-buttons');
-const addSpotBtn         = document.getElementById('add-spot-btn');
-const backdrop           = document.getElementById('sheet-backdrop');
-// Check-in sheet
-const checkinSheet       = document.getElementById('checkin-sheet');
-const sheetLocationName  = document.getElementById('sheet-location-name');
-const checkinMessage     = document.getElementById('checkin-message');
-const charCount          = document.getElementById('char-count');
-const sheetConfirm       = document.getElementById('sheet-confirm');
-const sheetCancel        = document.getElementById('sheet-cancel');
-// Add-spot sheet
-const addSpotSheet       = document.getElementById('add-spot-sheet');
-const spotNameInput      = document.getElementById('spot-name-input');
-const spotConfirm        = document.getElementById('spot-confirm');
-const spotCancel         = document.getElementById('spot-cancel');
-const toast              = document.getElementById('toast');
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const nameScreen      = document.getElementById('name-screen');
+const mainScreen      = document.getElementById('main-screen');
+const nameInput       = document.getElementById('name-input');
+const nameSubmit      = document.getElementById('name-submit');
+const userNameEl      = document.getElementById('user-name-display');
+const changeNameBtn   = document.getElementById('change-name-btn');
+const btnOut          = document.getElementById('btn-out');
+const currentStatus   = document.getElementById('current-status');
+const currentLocEl    = document.getElementById('current-location-label');
+const notifPrompt     = document.getElementById('notif-prompt');
+const enableNotifsBtn = document.getElementById('enable-notifs');
+const locationBoard   = document.getElementById('locations-board');
+const checkinBtns     = document.getElementById('checkin-buttons');
+const addSpotBtn      = document.getElementById('add-spot-btn');
+const backdrop        = document.getElementById('sheet-backdrop');
+const checkinSheet    = document.getElementById('checkin-sheet');
+const sheetLocName    = document.getElementById('sheet-location-name');
+const checkinMsg      = document.getElementById('checkin-message');
+const charCount       = document.getElementById('char-count');
+const sheetConfirm    = document.getElementById('sheet-confirm');
+const sheetCancel     = document.getElementById('sheet-cancel');
+const addSpotSheet    = document.getElementById('add-spot-sheet');
+const spotNameInput   = document.getElementById('spot-name-input');
+const spotConfirm     = document.getElementById('spot-confirm');
+const spotCancel      = document.getElementById('spot-cancel');
+const toastEl         = document.getElementById('toast');
 
-// ── Bootstrap ────────────────────────────────────────────────────────────────
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 async function init() {
   await registerSW();
   if (!userName) {
@@ -97,7 +88,6 @@ async function init() {
   } else {
     show(mainScreen);
     userNameEl.textContent = userName;
-    await seedLocations();
     startListening();
     initMessaging();
   }
@@ -106,19 +96,11 @@ async function init() {
 async function registerSW() {
   if ('serviceWorker' in navigator) {
     try { await navigator.serviceWorker.register('/firebase-messaging-sw.js'); }
-    catch (e) { console.warn('SW failed:', e); }
+    catch (e) { console.warn('SW registration failed:', e); }
   }
 }
 
-// Ensure Mega and 809 always exist
-async function seedLocations() {
-  await Promise.all([
-    setDoc(doc(db, 'locations', 'mega'), { name: 'Mega', isPermanent: true }, { merge: true }),
-    setDoc(doc(db, 'locations', '809'),  { name: '809',  isPermanent: true }, { merge: true }),
-  ]);
-}
-
-// ── Name entry ───────────────────────────────────────────────────────────────
+// ── Name entry ────────────────────────────────────────────────────────────────
 nameSubmit.addEventListener('click', submitName);
 nameInput.addEventListener('keydown', e => e.key === 'Enter' && submitName());
 
@@ -129,8 +111,7 @@ async function submitName() {
   localStorage.setItem('booling_name', name);
   userNameEl.textContent = name;
   show(mainScreen);
-  await seedLocations();
-  startListening();
+  startListening();           // guard inside prevents duplicate listeners
   await initMessaging();
 }
 
@@ -142,168 +123,176 @@ changeNameBtn.addEventListener('click', () => {
 
 // ── Firestore listeners ───────────────────────────────────────────────────────
 function startListening() {
-  if (listeningStarted) return; // prevent duplicate listeners from name-change flow
+  if (listeningStarted) return;  // prevent duplicate listeners on name-change flow
   listeningStarted = true;
 
+  // Custom locations collection (skip any doc whose ID matches a permanent one)
   onSnapshot(collection(db, 'locations'), snap => {
-    locationsMap = {};
-    snap.forEach(d => { locationsMap[d.id] = d.data(); });
+    customLocs = [];
+    snap.forEach(d => {
+      if (PERM_IDS.has(d.id)) return;
+      const data = d.data();
+      if (data.isPermanent) return;
+      const { color, dim } = customColor(d.id);
+      customLocs.push({ id: d.id, name: data.name, emoji: '📍', color, dim });
+    });
+    customLocs.sort((a, b) => a.name.localeCompare(b.name));
     render();
+  }, err => {
+    // Firestore rules may not yet include 'locations' — permanent locs still render
+    console.warn('Locations listener error (check Firestore rules):', err.message);
+    render(); // render with just the permanent locations
   });
 
   onSnapshot(collection(db, 'users'), snap => {
     usersMap = {};
     snap.forEach(d => { usersMap[d.id] = d.data(); });
     render();
+  }, err => {
+    console.warn('Users listener error:', err.message);
   });
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
 function render() {
-  const myUser    = usersMap[userId];
-  const myLocId   = myUser?.locationId ?? null;
-  const myLocName = myLocId ? (locationsMap[myLocId]?.name ?? myLocId) : null;
+  const allLocs = [...PERMANENT, ...customLocs];
+  const myUser  = usersMap[userId];
+  const myLocId = myUser?.locationId ?? null;
 
-  // Sort: permanent first (mega, then 809), then custom alphabetically
-  const sorted = Object.entries(locationsMap).sort(([aId, a], [bId, b]) => {
-    if (a.isPermanent && !b.isPermanent) return -1;
-    if (!a.isPermanent && b.isPermanent) return 1;
-    if (a.isPermanent && b.isPermanent) {
-      // mega before 809
-      if (aId === 'mega') return -1;
-      if (bId === 'mega') return  1;
-    }
-    return a.name.localeCompare(b.name);
-  });
-
-  // Build people-per-location index
-  const peopleAt = {}; // locationId → [{ uid, name, message }]
+  // Index people by location
+  const peopleAt = {};
   for (const [uid, u] of Object.entries(usersMap)) {
-    if (u.locationId && locationsMap[u.locationId]) {
-      (peopleAt[u.locationId] ??= []).push({ uid, name: u.name, message: u.message ?? '' });
-    }
+    const lid = u.locationId;
+    if (!lid) continue;
+    if (!allLocs.some(l => l.id === lid)) continue; // unknown/stale location
+    (peopleAt[lid] ??= []).push({ uid, name: u.name ?? '?', message: u.message ?? '' });
   }
 
-  // ── Render status board ──
+  // ── Board cards ──
   locationBoard.innerHTML = '';
-  for (const [locId, loc] of sorted) {
-    const people = peopleAt[locId] ?? [];
-    const { accent, dim } = locationColor(locId);
-    const emoji = locationEmoji(locId, loc.name);
-    const isLit = people.length > 0;
+  for (const loc of allLocs) {
+    const people = peopleAt[loc.id] ?? [];
+    const isLit  = people.length > 0;
+    const isPerm = PERM_IDS.has(loc.id);
 
     const card = document.createElement('div');
     card.className = `loc-card${isLit ? ' lit' : ''}`;
-    card.style.setProperty('--accent', accent);
-    card.style.setProperty('--accent-dim', dim);
+    card.style.setProperty('--accent',     loc.color);
+    card.style.setProperty('--accent-dim', loc.dim);
 
-    const deleteBtn = !loc.isPermanent
-      ? `<button class="card-delete" data-loc-id="${locId}" title="Remove spot">✕</button>`
-      : '';
+    const delBtn = isPerm
+      ? ''
+      : `<button class="card-delete" data-id="${loc.id}" title="Remove spot">✕</button>`;
+
+    const peopleHtml = people.length === 0
+      ? '<span class="empty-text">Nobody here yet</span>'
+      : people.map(p => {
+          const isMe = p.uid === userId;
+          return `
+            <div class="person-row">
+              <div class="avatar${isMe ? ' me' : ''}"
+                   style="--accent:${loc.color};--accent-dim:${loc.dim}">${initials(p.name)}</div>
+              <div class="person-info">
+                <span class="person-name">${esc(p.name)}${isMe ? ' ⭐' : ''}</span>
+                ${p.message ? `<span class="person-msg">"${esc(p.message)}"</span>` : ''}
+              </div>
+            </div>`;
+        }).join('');
 
     card.innerHTML = `
       <div class="card-header">
-        <span class="card-emoji">${emoji}</span>
+        <span class="card-emoji">${loc.emoji}</span>
         <span class="card-name">${esc(loc.name)}</span>
         <span class="card-badge">${people.length}</span>
-        ${deleteBtn}
+        ${delBtn}
       </div>
-      <div class="card-people" id="people-${locId}">
-        ${people.length === 0
-          ? '<span class="empty-text">Nobody here yet</span>'
-          : people.map(p => `
-              <div class="person-entry">
-                <span class="chip${p.uid === userId ? ' me' : ''}">${p.uid === userId ? '⭐ ' : ''}${esc(p.name)}</span>
-                ${p.message ? `<span class="person-msg">"${esc(p.message)}"</span>` : ''}
-              </div>`).join('')}
-      </div>`;
+      <div class="card-people">${peopleHtml}</div>`;
+
+    card.querySelector('.card-delete')
+        ?.addEventListener('click', () => deleteLocation(loc.id));
 
     locationBoard.appendChild(card);
   }
 
-  // Delete button listeners
-  locationBoard.querySelectorAll('.card-delete').forEach(btn => {
-    btn.addEventListener('click', () => deleteLocation(btn.dataset.locId));
-  });
-
-  // ── Render check-in buttons ──
-  checkinButtons.innerHTML = '';
-  for (const [locId, loc] of sorted) {
-    const { accent, dim } = locationColor(locId);
-    const emoji = locationEmoji(locId, loc.name);
+  // ── Check-in buttons ──
+  checkinBtns.innerHTML = '';
+  for (const loc of allLocs) {
     const btn = document.createElement('button');
-    btn.className = `btn-loc${locId === myLocId ? ' active' : ''}`;
-    btn.style.setProperty('--accent', accent);
-    btn.style.setProperty('--accent-dim', dim);
-    btn.dataset.locId = locId;
-    btn.dataset.locName = loc.name;
-    btn.innerHTML = `${emoji}<br>${esc(loc.name)}`;
-    btn.addEventListener('click', () => openCheckinSheet(locId, loc.name));
-    checkinButtons.appendChild(btn);
+    btn.className = `btn-loc${loc.id === myLocId ? ' active' : ''}`;
+    btn.style.setProperty('--accent',     loc.color);
+    btn.style.setProperty('--accent-dim', loc.dim);
+    btn.innerHTML = `${loc.emoji}<br>${esc(loc.name)}`;
+    btn.addEventListener('click', () => openCheckinSheet(loc.id, loc.name));
+    checkinBtns.appendChild(btn);
   }
 
-  // ── Current status ──
-  if (myLocId && myLocName) {
+  // ── Status pill ──
+  if (myLocId) {
+    const loc = allLocs.find(l => l.id === myLocId);
     currentStatus.classList.remove('hidden');
-    currentLocationEl.textContent = myLocName;
+    currentLocEl.textContent = loc?.name ?? myUser?.locationName ?? myLocId;
   } else {
     currentStatus.classList.add('hidden');
   }
 }
 
-function esc(str) {
-  return String(str ?? '')
+function initials(name) {
+  const parts = String(name || '?').trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function esc(s) {
+  return String(s ?? '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── Delete custom location ────────────────────────────────────────────────────
 async function deleteLocation(locId) {
-  const loc = locationsMap[locId];
-  if (!loc || loc.isPermanent) return;
+  if (PERM_IDS.has(locId)) return;
+  const loc = customLocs.find(l => l.id === locId);
 
-  // Move anyone still there to "out"
-  const affected = Object.entries(usersMap).filter(([,u]) => u.locationId === locId);
+  // Move anyone there to "out" first
+  const affected = Object.entries(usersMap).filter(([, u]) => u.locationId === locId);
   await Promise.all(affected.map(([uid]) =>
-    setDoc(doc(db, 'users', uid), { locationId: null, locationName: null, message: null }, { merge: true })
+    setDoc(doc(db, 'users', uid),
+           { locationId: null, locationName: null, message: null }, { merge: true })
   ));
 
   await deleteDoc(doc(db, 'locations', locId));
-  showToast(`Removed ${loc.name}`);
+  if (loc) showToast(`Removed ${loc.name}`);
 }
 
-// ── Auto-cleanup empty custom locations ──────────────────────────────────────
-// Called after a check-out; removes a non-permanent location if it's empty.
+// Auto-delete empty custom locations after someone leaves
 async function cleanupIfEmpty(locId) {
-  if (!locId) return;
-  const loc = locationsMap[locId];
-  if (!loc || loc.isPermanent) return;
+  if (!locId || PERM_IDS.has(locId)) return;
   const stillThere = Object.values(usersMap).some(u => u.locationId === locId);
   if (!stillThere) {
-    await deleteDoc(doc(db, 'locations', locId));
+    try { await deleteDoc(doc(db, 'locations', locId)); } catch { /* ok */ }
   }
 }
 
 // ── Check-in sheet ────────────────────────────────────────────────────────────
 function openCheckinSheet(locId, locName) {
-  pendingLocationId   = locId;
-  pendingLocationName = locName;
-  sheetLocationName.textContent = locName;
-  checkinMessage.value = '';
+  pendingLocId   = locId;
+  pendingLocName = locName;
+  sheetLocName.textContent = locName;
+  checkinMsg.value = '';
   charCount.textContent = '0';
   openSheet(checkinSheet);
-  setTimeout(() => checkinMessage.focus(), 350);
+  setTimeout(() => checkinMsg.focus(), 350);
 }
 
-checkinMessage.addEventListener('input', () => {
-  charCount.textContent = checkinMessage.value.length;
+checkinMsg.addEventListener('input', () => {
+  charCount.textContent = checkinMsg.value.length;
 });
 
 sheetConfirm.addEventListener('click', async () => {
-  if (!pendingLocationId || sheetConfirm.disabled) return;
+  if (!pendingLocId || sheetConfirm.disabled) return;
   sheetConfirm.disabled = true;
-  const locId  = pendingLocationId;
-  const locName = pendingLocationName;
-  const msg    = checkinMessage.value.trim();
+  const locId   = pendingLocId;
+  const locName = pendingLocName;
+  const msg     = checkinMsg.value.trim();
   closeSheets();
   try {
     await checkIn(locId, locName, msg);
@@ -315,7 +304,7 @@ sheetConfirm.addEventListener('click', async () => {
 
 sheetCancel.addEventListener('click', closeSheets);
 
-// ── Add-spot sheet ────────────────────────────────────────────────────────────
+// ── Add spot sheet ────────────────────────────────────────────────────────────
 addSpotBtn.addEventListener('click', () => {
   spotNameInput.value = '';
   openSheet(addSpotSheet);
@@ -323,7 +312,6 @@ addSpotBtn.addEventListener('click', () => {
 });
 
 spotNameInput.addEventListener('keydown', e => e.key === 'Enter' && addSpot());
-
 spotConfirm.addEventListener('click', addSpot);
 spotCancel.addEventListener('click', closeSheets);
 
@@ -331,27 +319,34 @@ async function addSpot() {
   const name = spotNameInput.value.trim();
   if (!name) { spotNameInput.focus(); return; }
 
-  // Check for duplicate name (case-insensitive)
-  const exists = Object.values(locationsMap).some(l => l.name.toLowerCase() === name.toLowerCase());
-  if (exists) { showToast('That spot already exists!'); return; }
+  const allNames = [...PERMANENT, ...customLocs].map(l => l.name.toLowerCase());
+  if (allNames.includes(name.toLowerCase())) {
+    showToast('That spot already exists!');
+    return;
+  }
 
   closeSheets();
-  const newRef = doc(collection(db, 'locations'));
-  await setDoc(newRef, { name, isPermanent: false, createdAt: serverTimestamp() });
-  showToast(`Added ${name} 📍`);
+  try {
+    const ref = doc(collection(db, 'locations'));
+    await setDoc(ref, { name, isPermanent: false, createdAt: serverTimestamp() });
+    showToast(`Added ${name} 📍`);
+  } catch (e) {
+    console.error('Failed to add spot:', e);
+    showToast('Failed — check Firestore rules include "locations"');
+  }
 }
 
 // ── Sheet helpers ─────────────────────────────────────────────────────────────
-function openSheet(sheet) {
-  backdrop.classList.remove('hidden');
-  document.querySelectorAll('.sheet').forEach(s => s.classList.add('hidden'));
-  sheet.classList.remove('hidden');
+function openSheet(s) {
+  backdrop.classList.add('open');
+  [checkinSheet, addSpotSheet].forEach(sh => sh.classList.remove('open'));
+  s.classList.add('open');
 }
 
 function closeSheets() {
-  backdrop.classList.add('hidden');
-  document.querySelectorAll('.sheet').forEach(s => s.classList.add('hidden'));
-  pendingLocationId = pendingLocationName = null;
+  backdrop.classList.remove('open');
+  [checkinSheet, addSpotSheet].forEach(s => s.classList.remove('open'));
+  pendingLocId = pendingLocName = null;
 }
 
 backdrop.addEventListener('click', closeSheets);
@@ -369,12 +364,12 @@ async function checkIn(locationId, locationName, message = '') {
     updatedAt:    serverTimestamp(),
   }, { merge: true });
 
-  // Clean up previous custom location if it's now empty
+  // Schedule cleanup of the previous custom location if it's now empty
   if (prevLocId && prevLocId !== locationId) {
-    // Give Firestore a tick to propagate
-    setTimeout(() => cleanupIfEmpty(prevLocId), 1500);
+    setTimeout(() => cleanupIfEmpty(prevLocId), 2000);
   }
 
+  // Exactly one notify call per check-in
   notifyOthers({ name: userName, house: locationName, message: message || null, senderToken: fcmToken });
 }
 
@@ -390,7 +385,7 @@ async function checkOut() {
     updatedAt:    serverTimestamp(),
   }, { merge: true });
 
-  if (prevLocId) setTimeout(() => cleanupIfEmpty(prevLocId), 1500);
+  if (prevLocId) setTimeout(() => cleanupIfEmpty(prevLocId), 2000);
 
   notifyOthers({ name: userName, house: null, message: null, senderToken: fcmToken });
 }
@@ -398,11 +393,11 @@ async function checkOut() {
 async function notifyOthers(payload) {
   try {
     await fetch('/api/notify', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body:    JSON.stringify(payload),
     });
-  } catch { /* non-fatal */ }
+  } catch { /* non-fatal — board still updates via Firestore */ }
 }
 
 btnOut.addEventListener('click', async () => {
@@ -415,7 +410,7 @@ btnOut.addEventListener('click', async () => {
 async function initMessaging() {
   if (!('Notification' in window)) return;
   try { messaging = getMessaging(fbApp); }
-  catch (e) { console.warn('Messaging unavailable:', e); return; }
+  catch { return; }
 
   if (Notification.permission === 'granted') {
     await grabFCMToken();
@@ -423,7 +418,7 @@ async function initMessaging() {
     notifPrompt.classList.remove('hidden');
   }
 
-  // data-only messages: title/body live in payload.data, not payload.notification
+  // data-only messages — title/body live in payload.data, not payload.notification
   onMessage(messaging, payload => {
     showToast(payload.data?.body ?? payload.data?.title ?? 'Someone checked in!');
   });
@@ -447,19 +442,18 @@ async function grabFCMToken() {
   } catch (e) { console.warn('FCM token error:', e); }
 }
 
-// ── Utils ─────────────────────────────────────────────────────────────────────
+// ── Utilities ─────────────────────────────────────────────────────────────────
 function show(el) {
-  nameScreen.classList.add('hidden');
-  mainScreen.classList.add('hidden');
+  [nameScreen, mainScreen].forEach(s => s.classList.add('hidden'));
   el.classList.remove('hidden');
 }
 
 let toastTimer;
 function showToast(msg) {
-  toast.textContent = msg;
-  toast.classList.add('show');
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3200);
 }
 
 // ── Go ────────────────────────────────────────────────────────────────────────
