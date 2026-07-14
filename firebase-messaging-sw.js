@@ -48,7 +48,7 @@ self.addEventListener('notificationclick', event => {
 });
 
 // ── PWA offline cache ─────────────────────────────────────────────────────────
-const CACHE   = 'booling-v1';
+const CACHE   = 'booling-v2';
 const PRECACHE = ['/', '/index.html', '/styles.css', '/app.js', '/firebase-config.js', '/manifest.json', '/icon.svg'];
 
 self.addEventListener('install', event => {
